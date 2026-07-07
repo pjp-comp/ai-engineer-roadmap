@@ -18,6 +18,8 @@ __pycache__/
 # examples/**/*.png
 # examples/**/*.pdf
 examples/**/*.index
+examples/phase1/vectors_map.svg
+examples/phase1/kitten_vector.txt
 
 # OS / editor
 .DS_Store
