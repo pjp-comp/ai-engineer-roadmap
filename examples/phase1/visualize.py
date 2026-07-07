@@ -31,7 +31,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.decomposition import PCA
 
 # Same 8 words as example.py, so the two demos line up.
-words = ["cat", "dog", "puppy", "apple", "orange", "car", "bus", "train"]
+words = ["cat", "dog", "puppy", "apple", "orange", "car", "bus", "train","kitten"]
 
 # Where to write the output files (this script's own folder).
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -67,7 +67,8 @@ sy = PAD + (1 - xy[:, 1]) * (H - 2 * PAD)  # flip y: SVG's y grows downward
 # Color by rough category so the clusters are obvious at a glance.
 color = {"cat": "#e05a5a", "dog": "#e05a5a", "puppy": "#e05a5a",
          "apple": "#3fa34d", "orange": "#3fa34d",
-         "car": "#3b7dd8", "bus": "#3b7dd8", "train": "#3b7dd8"}
+         "car": "#3b7dd8", "bus": "#3b7dd8", "train": "#3b7dd8", 
+         "kitten" : "#3fa34d"}
 
 marks = []
 for x, y, w in zip(sx, sy, words):
