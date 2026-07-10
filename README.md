@@ -80,6 +80,7 @@ python examples/pdf-vectorless/example.py      # SAME PDF answered with NO embed
 | [README.md](README.md) | This index — setup, file map, and the learning roadmap |
 | [learning_notes.md](learning_notes.md) | **The full guide** — start here; plain-language theory for every phase |
 | [rag_architecture_types.md](rag_architecture_types.md) | One-page map of the RAG architecture types (naive, hybrid, agentic, CRAG, graph, vectorless, multi-modal) |
+| [context_engineering.md](context_engineering.md) | How retrieval fits into the bigger job of assembling the LLM's prompt (context engineering) |
 | [examples/](examples/) | Runnable, commented examples: one per phase (`phase1` … `phase7`) plus bonus `image-embeddings`, `pdf-rag`, `pdf-vectorless` |
 | [requirements.txt](requirements.txt) | Python dependencies |
 
