@@ -12,13 +12,17 @@ Run (from the project root, with the venv active):
     python examples/phase1/example.py
 """
 
-from sentence_transformers import SentenceTransformer
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from sentence_transformers.util import cos_sim
+from shared import load_model  # model name + loading live in examples/shared.py
 
 # 1. Load a small AI model that turns text into a list of numbers (an embedding).
 #    The first run downloads it (~90 MB); after that it is cached and fast.
-print("Loading the embedding model (first time downloads it)...")
-model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+model = load_model()
 
 # 2. Our tiny "knowledge": just 8 words.
 words = ["cat", "dog", "puppy", "apple", "orange", "car", "bus", "train"]

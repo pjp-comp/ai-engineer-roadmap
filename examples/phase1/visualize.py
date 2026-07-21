@@ -26,8 +26,13 @@ Outputs (written next to this script):
 """
 
 import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from shared import load_model
+
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from sklearn.decomposition import PCA
 
 # Same 8 words as example.py, so the two demos line up.
@@ -36,8 +41,7 @@ words = ["cat", "dog", "puppy", "apple", "orange", "car", "bus", "train","kitten
 # Where to write the output files (this script's own folder).
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-print("Loading the embedding model (first time downloads it)...")
-model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+model = load_model()
 
 # Turn every word into its vector (384 numbers). normalize=True gives each
 # vector length 1, which is what makes cosine-similarity comparisons clean.

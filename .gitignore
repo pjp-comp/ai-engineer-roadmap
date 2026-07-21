@@ -11,6 +11,8 @@ __pycache__/
 
 # Hugging Face / model caches
 .cache/
+# project-local model cache (set via HF_HOME in examples/shared.py)
+.models/
 *.bin
 *.safetensors
 

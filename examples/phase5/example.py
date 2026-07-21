@@ -21,11 +21,16 @@ Run:
     python examples/phase5/example.py
 """
 
-from sentence_transformers import SentenceTransformer
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from shared import load_model
+
 from sentence_transformers.util import cos_sim
 
-print("Loading the embedding model...")
-model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+model = load_model()
 
 docs = [
     "Reset your password from the account settings page.",

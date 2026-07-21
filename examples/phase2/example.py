@@ -13,11 +13,17 @@ Run (from the project root, with the venv active):
     python examples/phase2/example.py
 """
 
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from shared import load_model
+
 from dataclasses import dataclass
 
 import faiss
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 
 @dataclass
@@ -28,8 +34,7 @@ class Item:
     category: str
 
 
-print("Loading the embedding model...")
-model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+model = load_model()
 
 # 1. Items now carry metadata (a category), not just bare text.
 items = [

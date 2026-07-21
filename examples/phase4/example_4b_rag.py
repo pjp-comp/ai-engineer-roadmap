@@ -17,11 +17,16 @@ Run:
     python examples/phase4/example_4b_rag.py
 """
 
-from sentence_transformers import SentenceTransformer
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from shared import load_model
+
 from sentence_transformers.util import cos_sim
 
-print("Loading the embedding model...")
-model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+model = load_model()
 
 # Our "knowledge base": a handful of facts (each one acts like a chunk).
 knowledge = [
