@@ -16,10 +16,12 @@ Run (from project root, venv active):
 """
 
 import os
+import sys
 
-from pypdf import PdfReader
-from sentence_transformers import SentenceTransformer
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from sentence_transformers.util import cos_sim
+from shared import chunk_text, load_model, read_pdf_text
 
 HERE = os.path.dirname(__file__)
 PDF_PATH = os.path.abspath(os.path.join(HERE, "..", "handbook.pdf"))
@@ -32,21 +34,6 @@ def ensure_pdf():
         build_pdf()
 
 
-def read_pdf_text(path):
-    reader = PdfReader(path)
-    return "\n".join(page.extract_text() or "" for page in reader.pages)
-
-
-def chunk_text(text, size=200, overlap=40):
-    """Split into overlapping chunks so ideas aren't cut at a boundary."""
-    text = " ".join(text.split())  # collapse whitespace/newlines
-    chunks, start = [], 0
-    while start < len(text):
-        chunks.append(text[start:start + size])
-        start += size - overlap
-    return chunks
-
-
 def fake_llm_answer(question, chunks):
     """Where a REAL app would call an LLM, e.g.:
         client.messages.create(model="claude-...", messages=[...])
@@ -55,17 +42,15 @@ def fake_llm_answer(question, chunks):
     return f"Based on the handbook: {chunks[0]}"
 
 
-import sys
 sys.path.insert(0, HERE)  # so 'import make_sample_pdf' works when run from root
 ensure_pdf()
 
 print("Reading the PDF and splitting it into chunks...")
-text = read_pdf_text(PDF_PATH)
-chunks = chunk_text(text)
+text = read_pdf_text(PDF_PATH)          # from examples/shared.py
+chunks = chunk_text(text)               # from examples/shared.py
 print(f"Got {len(chunks)} chunks from the PDF.\n")
 
-print("Loading the embedding model...")
-model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+model = load_model()
 chunk_vectors = model.encode(chunks, normalize_embeddings=True)
 
 question = "How many days do I have to refund an annual plan?"
