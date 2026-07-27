@@ -19,18 +19,18 @@ PDF_PATH = os.path.abspath(PDF_PATH)
 
 # (heading, body) pairs. The heading structure is what the vectorless demo uses.
 CONTENT = [
-    ("Company Handbook", ""),
+    ("LSPL Company Handbook", ""),
     ("1. Billing", ""),
     ("1.1 Refunds", "Annual plans are refundable within 30 days of purchase. "
                     "Monthly plans are not refundable but can be cancelled anytime."),
     ("1.2 Invoices", "Invoices are emailed on the first day of each month. "
                      "You can download past invoices from the billing dashboard."),
-    ("2. Accounts", ""),
+    ("2. Accounts", "This is fake type of account"),
     ("2.1 Passwords", "Reset your password from the account settings page. "
                       "Passwords must be at least 12 characters long."),
     ("2.2 Login Issues", "If you cannot log in, use the forgot-password link. "
                          "Accounts lock for 15 minutes after five failed attempts."),
-    ("3. Support", ""),
+    ("3. Support", "For Support contact us on pjp.comp@gmail.com or call us on 9090909090"),
     ("3.1 Contact", "Support is available 24/7 through chat and email. "
                     "Enterprise customers also get a dedicated account manager."),
 ]
