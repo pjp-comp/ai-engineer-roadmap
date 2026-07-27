@@ -80,3 +80,91 @@ changing data — see the long-context note in
 | Graph | retrieve over relationships | optional | multi-hop, relational questions |
 | Vectorless | reason over structure | no | long, structured documents |
 | Multi-modal | non-text data | yes | image/audio/code search |
+
+---
+
+## Catalog: individual RAG techniques
+
+The 7 types above are the *shapes* of a RAG system. Within them sit dozens of
+specific **techniques** you can mix and match. The catalog below is organized by
+the stage of the pipeline each technique improves.
+
+> **Source & attribution:** this catalog follows the technique list and category
+> structure of Nir Diamant's open-source
+> [**RAG_Techniques**](https://github.com/NirDiamant/RAG_Techniques) repository
+> (each technique there has a runnable notebook), whose visual companion is the
+> book *RAG Made Simple: The Complete Visual Guide to Retrieval-Augmented
+> Generation*. Names below are taken from that repo; the one-line descriptions are
+> summaries. Go there (or to the book) for the authoritative, in-depth version.
+> Where a technique already has a demo in **this** repo, it's cross-linked.
+
+### 🌱 Foundational — getting a basic pipeline working
+- **Basic RAG** — the core chunk → embed → retrieve → generate loop.
+  *(this repo: [Phase 4](learning_notes.md#deep-dive-phase-4--building-real-rag))*
+- **RAG over CSV / JSON** — semantic search across tabular or structured records.
+- **Reliable RAG** — add validation/grounding checks so answers stick to sources.
+- **Optimizing chunk sizes** — tune fixed-size segmentation for the content.
+  *(this repo: [Phase 4 chunking](learning_notes.md#deep-dive-phase-4--building-real-rag))*
+- **Proposition chunking** — split into standalone factual statements, not blind slices.
+
+### 🔍 Query enhancement — fix the question before searching
+- **Query transformations** — rewrite, step-back, or decompose the query.
+- **HyDE (Hypothetical Document Embedding)** — draft a fake answer, search with *that*.
+- **HyPE (Hypothetical Prompt Embeddings)** — precompute likely questions to match against.
+  *(this repo touches query transforms in [Phase 5](learning_notes.md#deep-dive-phase-5--better-retrieval-quality))*
+
+### 📚 Context & content enrichment — give each chunk more meaning
+- **Contextual chunk headers** — prepend the document/section title to each chunk.
+- **Relevant segment extraction** — stitch several chunks into one coherent passage.
+- **Context window enhancement** — also pull the neighbouring sentences around a hit.
+- **Semantic chunking** — split on topic boundaries, not character counts.
+- **Contextual compression** — condense retrieved text down to just the relevant bits.
+- **Document augmentation** — generate questions per chunk to make it more findable.
+
+### 🚀 Advanced retrieval — get better candidates back
+- **Fusion retrieval** — hybrid keyword + vector search.
+  *(this repo: hybrid search in [Phase 5](learning_notes.md#deep-dive-phase-5--better-retrieval-quality))*
+- **Intelligent reranking** — an LLM/cross-encoder re-scores the shortlist.
+  *(this repo: re-ranking in [Phase 5](learning_notes.md#deep-dive-phase-5--better-retrieval-quality))*
+- **Multi-faceted filtering** — filter by metadata, score threshold, content, diversity.
+- **Hierarchical indices** — a summary tier over a detail tier for two-stage search.
+- **Dartboard retrieval** — balance relevance *and* diversity in the results.
+- **Multi-modal retrieval** — bring images in via captioning or vision LLMs.
+  *(this repo: [image embeddings](learning_notes.md#deep-dive-image-embeddings-searching-pictures))*
+
+### 🔁 Iterative & adaptive — change strategy on the fly
+- **Retrieval with feedback loops** — learn from user interaction over time.
+- **Adaptive retrieval** — pick a retrieval strategy based on the query type.
+
+### 📊 Evaluation — measure quality instead of guessing
+- **DeepEval** — score correctness, faithfulness, contextual relevancy.
+- **GroUSE** — grounded LLM evaluation.
+- **End-to-end RAG evaluation** — assess the whole pipeline.
+- **Open-RAG-Eval** — UMBRELA scoring and hallucination detection.
+
+### 🧠 Memory-augmented
+- **MemoRAG** — key/value memory extraction with surrogate queries.
+
+### 🔬 Explainability
+- **Explainable retrieval** — surface *why* each passage was retrieved.
+
+### 🏗️ Advanced architectures — the "shapes" from above, in depth
+- **Agentic RAG** — the retrieve → judge → retry decision loop.
+  *(this repo: [Phase 6](learning_notes.md#deep-dive-phase-6--advanced--agentic-retrieval))*
+- **Self-RAG** — the model decides *when* to retrieve and whether to trust results.
+- **Corrective RAG (CRAG)** — grade retrieval, correct or fall back.
+  *(this repo: [Phase 6b demo](examples/phase6b-crag/example.py))*
+- **Graph RAG** — retrieve over an entity/relationship knowledge graph (variants:
+  Milvus-backed, Microsoft GraphRAG's community extraction, local + attribution).
+- **RAPTOR** — recursive, tree-organized summarization for multi-level retrieval.
+- **Sophisticated controllable agent** — a deterministic graph-based agent for hard,
+  multi-step questions.
+
+> **How this maps back:** most "foundational / query / enrichment / retrieval /
+> evaluation" items are *techniques inside* the **Advanced/Hybrid** type; the
+> "advanced architectures" are the **Agentic**, **CRAG**, **Graph**, and
+> **Multi-modal** types seen in more depth.
+
+## References
+- Nir Diamant — [RAG_Techniques (GitHub)](https://github.com/NirDiamant/RAG_Techniques) — runnable notebook per technique.
+- Nir Diamant — *RAG Made Simple: The Complete Visual Guide to Retrieval-Augmented Generation* (Super AI Engineering Series) — the book's visual companion to the repo.

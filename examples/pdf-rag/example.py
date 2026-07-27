@@ -53,7 +53,7 @@ print(f"Got {len(chunks)} chunks from the PDF.\n")
 model = load_model()
 chunk_vectors = model.encode(chunks, normalize_embeddings=True)
 
-question = "How many days do I have to refund an annual plan?"
+question = "What is company name and which type this company is?"
 print(f'\nQuestion: "{question}"\n')
 
 q_vec = model.encode(question, normalize_embeddings=True)
