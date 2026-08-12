@@ -1,153 +1,163 @@
 """
-MULTIMODAL RAG — one vector DB over TEXT, a TABLE, and an IMAGE from a PDF.
+MULTIMODAL RAG over ANY PDF — text + tables + images in one vector DB.
 
-Most RAG demos only handle plain text. Real documents mix content types: a
-report has paragraphs, tables of numbers, and charts/images. This example shows
-the modern way to retrieve across all three at once.
+Real documents mix content types: paragraphs, tables of numbers, and
+charts/images. This builds ONE vector database over all three, from ANY PDF, and
+retrieves across them with a single query.
 
-The key idea (the "latest way"):
-    Use CLIP, a model that embeds BOTH text and images into ONE shared vector
-    space. So a text query, a paragraph, a table row, and a chart image can all
-    be compared with the same cosine similarity. We tag every item with its
-    TYPE (text / table / image) as metadata, store it in a FAISS vector DB, and
-    retrieve by meaning — regardless of which type the answer lives in.
+How it works (the modern approach):
+    - TEXT   : each page's prose is split into overlapping chunks.
+    - TABLES : pulled out with pdfplumber (real table structure), linearized to
+               readable rows, and embedded as text.
+    - IMAGES : extracted from the PDF, embedded with CLIP, and paired with a
+               short caption so they're findable by words ("describe-then-embed").
+    Everything is embedded into ONE CLIP space (text and images share a space),
+    stored in a FAISS vector DB with TYPE + PAGE metadata, and retrieved by
+    cosine similarity — regardless of which content type the answer lives in.
 
-Pipeline:
-    1. Read the PDF: pull out its text, its table, and its embedded image.
-    2. Embed everything with CLIP into one space.
-    3. Build a FAISS vector DB (vectors + the original content + type metadata).
-    4. Retrieve: embed a query, return the most relevant items, nicely formatted.
-
+Point it at any PDF with --pdf; defaults to the bundled sample.
 No API key needed. CLIP runs locally.
 
 Run (from project root, venv active):
     python examples/pdf-multi-content-rag/example.py
+    python examples/pdf-multi-content-rag/example.py --pdf path/to/your.pdf
+    python examples/pdf-multi-content-rag/example.py --pdf your.pdf -q "your question"
 """
 
+import argparse
 import io
 import os
-import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import faiss
 import numpy as np
+import pdfplumber
 from PIL import Image
-from pypdf import PdfReader
 
 from shared import load_clip
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PDF_PATH = os.path.join(HERE, "sample_document_with_chart.pdf")
+DEFAULT_PDF = os.path.join(HERE, "sample_document_with_chart.pdf")
 IMG_DIR = os.path.join(HERE, "extracted_images")
 
+# CLIP's text encoder truncates at 77 tokens, so keep text chunks short.
+CHUNK_CHARS = 300
+CHUNK_OVERLAP = 60
+
 
 # --------------------------------------------------------------------------
-# 1. EXTRACT the three content types from the PDF
+# 1. EXTRACT text, tables, and images from ANY PDF
 # --------------------------------------------------------------------------
-def looks_like_table_row(line):
-    """A table row here is a data cell: a number, a percent, or 'Base'/header."""
-    line = line.strip()
-    return bool(
-        re.fullmatch(r"[\d,]+", line)                 # 15,000
-        or re.fullmatch(r"[+-]?\d+(\.\d+)?%", line)   # +53.3%
-        or line in {"Quarter", "Revenue ($)", "Growth", "Base"}
-        or re.fullmatch(r"Q[1-4]", line)              # Q1..Q4
-    )
+def _chunk(text, size=CHUNK_CHARS, overlap=CHUNK_OVERLAP):
+    text = " ".join(text.split())
+    out, start = [], 0
+    while start < len(text):
+        out.append(text[start:start + size])
+        start += size - overlap
+    return out
+
+
+def _clean_table(rows):
+    """Drop empty cells/rows and linearize a pdfplumber table to readable text.
+
+    Returns (pretty, embed_text) or (None, None) if the table is effectively empty.
+    """
+    cleaned = []
+    for row in rows:
+        cells = [(c or "").strip().replace("\n", " ") for c in row]
+        cells = [c for c in cells if c]  # drop empty cells
+        if cells:
+            cleaned.append(cells)
+    if len(cleaned) < 2:  # need at least a header + one row to be a real table
+        return None, None
+    pretty = "\n".join("  |  ".join(r) for r in cleaned)
+    # a flat, sentence-like version helps CLIP's text encoder match queries
+    header = cleaned[0]
+    body_desc = "; ".join(", ".join(r) for r in cleaned[1:])
+    embed_text = f"Table with columns {', '.join(header)}. Data: {body_desc}"
+    return pretty, embed_text[: 1200]  # keep it bounded
 
 
 def extract_items(pdf_path):
-    """Return a list of dicts: {type, content, image?} for text/table/image."""
-    reader = PdfReader(pdf_path)
+    """Return a list of dicts: {type, page, content, ...} for text/table/image."""
     items = []
-
-    # -- text + table (pypdf gives us the page text; we split the two apart) --
-    for page_num, page in enumerate(reader.pages, 1):
-        raw = page.extract_text() or ""
-        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
-
-        prose = [ln for ln in lines if not looks_like_table_row(ln)]
-        table_cells = [ln for ln in lines if looks_like_table_row(ln)]
-
-        # join wrapped prose lines into paragraphs (blank-line split is lost by
-        # pypdf, so we treat the prose block as the document's text)
-        if prose:
-            items.append({
-                "type": "text",
-                "page": page_num,
-                "content": " ".join(prose),
-            })
-        # rebuild the table as readable rows of 3 columns (Quarter/Revenue/Growth)
-        if table_cells:
-            header = table_cells[:3]
-            body = table_cells[3:]
-            rows = [header] + [body[i:i + 3] for i in range(0, len(body), 3)]
-            pretty = "\n".join("  |  ".join(r) for r in rows if r)
-            # embed a linearized version so CLIP can match on the numbers/labels
-            linear = "Table of quarterly revenue and growth. " + \
-                "; ".join(f"{r[0]}: revenue {r[1]}, growth {r[2]}"
-                          for r in rows[1:] if len(r) == 3)
-            items.append({
-                "type": "table",
-                "page": page_num,
-                "content": pretty,
-                "embed_text": linear,
-            })
-
-    # -- images --
     os.makedirs(IMG_DIR, exist_ok=True)
-    for page_num, page in enumerate(reader.pages, 1):
-        for img in getattr(page, "images", []):
-            pil = Image.open(io.BytesIO(img.data)).convert("RGB")
-            out = os.path.join(IMG_DIR, f"page{page_num}_{img.name}")
-            pil.save(out)
-            # A short caption drawn from the page context. In production this
-            # comes from an image-captioning / vision model; here we use the
-            # document's own words about the graphic. This "describe-then-embed"
-            # step is what makes charts findable by text (CLIP alone is weak on
-            # diagrams), so we store BOTH the picture and this caption.
-            caption = ("chart graphic figure visualizing quarterly revenue and "
-                       "growth as a bar graph")
-            items.append({
-                "type": "image",
-                "page": page_num,
-                "content": f"[image] {os.path.basename(out)}  ({pil.size[0]}x{pil.size[1]})",
-                "image": pil,
-                "caption": caption,
-                "path": out,
-            })
+
+    with pdfplumber.open(pdf_path) as pdf:
+        for page_num, page in enumerate(pdf.pages, 1):
+            # -- tables (do this first so we can subtract them from the text) --
+            page_tables = page.extract_tables() or []
+            for t in page_tables:
+                pretty, embed_text = _clean_table(t)
+                if pretty:
+                    items.append({"type": "table", "page": page_num,
+                                  "content": pretty, "embed_text": embed_text})
+
+            # -- text: the page prose, split into chunks --
+            text = page.extract_text() or ""
+            for chunk in _chunk(text):
+                if len(chunk.strip()) >= 25:  # skip tiny fragments
+                    items.append({"type": "text", "page": page_num,
+                                  "content": chunk.strip()})
+
+            # -- images --
+            for j, img in enumerate(page.images):
+                pil = _crop_image(page, img)
+                if pil is None:
+                    continue
+                out = os.path.join(IMG_DIR, f"page{page_num}_img{j}.png")
+                pil.save(out)
+                items.append({
+                    "type": "image", "page": page_num,
+                    "content": f"[image] {os.path.basename(out)}  ({pil.size[0]}x{pil.size[1]})",
+                    "image": pil,
+                    "caption": f"figure, chart, or graphic on page {page_num} of the document",
+                    "path": out,
+                })
     return items
+
+
+def _crop_image(page, img):
+    """Render just the image's region of the page to a PIL image (robust across
+    PDF encodings). Returns None if it can't be rendered or is too tiny."""
+    try:
+        bbox = (max(img["x0"], 0), max(page.height - img["y1"], 0),
+                min(img["x1"], page.width), min(page.height - img["y0"], page.height))
+        w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        if w < 40 or h < 40:
+            return None  # skip icons/rules
+        # skip banner/rule strips: very wide-and-short (or tall-and-thin) bands
+        # that are page decoration, not real figures.
+        if w / h > 6 or h / w > 6:
+            return None
+        cropped = page.crop(bbox).to_image(resolution=120)
+        buf = io.BytesIO()
+        cropped.save(buf, format="PNG")
+        return Image.open(io.BytesIO(buf.getvalue())).convert("RGB")
+    except Exception:
+        return None
 
 
 # --------------------------------------------------------------------------
 # 2 + 3. EMBED everything with CLIP and BUILD the FAISS vector DB
 # --------------------------------------------------------------------------
 def _unit(v):
-    """Return v scaled to length 1 (so cosine == dot product)."""
     return v / (np.linalg.norm(v) + 1e-9)
 
 
 def build_vector_db(items, model):
-    """Embed each item into ONE CLIP space.
-
-    - text / table: embed the text.
-    - image: embed the PICTURE and its CAPTION, then average the two. This puts
-      the image on the same cross-modal footing as text queries, so charts are
-      findable by words (pure image vectors score too low against text queries).
-    """
+    """Embed each item into ONE CLIP space and store in a FAISS index."""
     vectors = []
     for it in items:
         if it["type"] == "image":
             img_vec = model.encode(it["image"], normalize_embeddings=True)
             cap_vec = model.encode(it["caption"], normalize_embeddings=True)
-            vec = _unit(img_vec + cap_vec)   # blend picture + description
+            vectors.append(_unit(img_vec + cap_vec))  # picture + description
         else:
-            # tables use a linearized 'embed_text'; text uses its content
-            vec = model.encode(it.get("embed_text", it["content"]),
-                               normalize_embeddings=True)
-        vectors.append(vec)
-
+            vectors.append(model.encode(it.get("embed_text", it["content"]),
+                                        normalize_embeddings=True))
     matrix = np.asarray(vectors, dtype="float32")
     index = faiss.IndexFlatIP(matrix.shape[1])  # inner product == cosine (normalized)
     index.add(matrix)
@@ -160,49 +170,60 @@ def build_vector_db(items, model):
 ICON = {"text": "📝 TEXT ", "table": "📊 TABLE", "image": "🖼️  IMAGE"}
 
 
-def search(query, index, items, model, k=3):
+def search(query, index, items, model, k=4):
     q_vec = model.encode(query, normalize_embeddings=True).astype("float32")
     scores, idxs = index.search(np.array([q_vec]), k)
 
     print(f'\n🔎 Query: "{query}"')
-    print("─" * 68)
+    print("─" * 72)
     for rank, (score, i) in enumerate(zip(scores[0], idxs[0]), 1):
+        if i < 0:
+            continue
         it = items[i]
         print(f"{rank}. {ICON[it['type']]}  (score {score:0.3f}, page {it['page']})")
         body = it["content"]
-        if it["type"] == "table":
-            for line in body.splitlines():
-                print(f"        {line}")
-        else:
-            print(f"        {body}")
+        preview = body if it["type"] == "table" else (body[:220] + ("…" if len(body) > 220 else ""))
+        for line in preview.splitlines():
+            print(f"        {line}")
     print()
 
 
 def main():
-    if not os.path.exists(PDF_PATH):
-        sys.exit(f"PDF not found: {PDF_PATH}")
+    ap = argparse.ArgumentParser(description="Multimodal RAG over any PDF.")
+    ap.add_argument("--pdf", default=DEFAULT_PDF, help="path to a PDF")
+    ap.add_argument("-q", "--query", action="append",
+                    help="a query (repeatable); omit to use built-in demo queries")
+    ap.add_argument("-k", type=int, default=4, help="results per query")
+    args = ap.parse_args()
 
-    print(f"Reading {os.path.basename(PDF_PATH)} and extracting its content...")
-    items = extract_items(PDF_PATH)
+    if not os.path.exists(args.pdf):
+        sys.exit(f"PDF not found: {args.pdf}")
 
+    print(f"Reading {os.path.basename(args.pdf)} and extracting its content...")
+    items = extract_items(args.pdf)
     counts = {}
     for it in items:
         counts[it["type"]] = counts.get(it["type"], 0) + 1
-    print("Extracted:", ", ".join(f"{n} {t}" for t, n in counts.items()))
+    print("Extracted:", ", ".join(f"{n} {t}" for t, n in sorted(counts.items())) or "nothing")
+    if not items:
+        sys.exit("No content extracted — is this a scanned/empty PDF?")
 
     model = load_clip()
     index = build_vector_db(items, model)
     print(f"Stored {index.ntotal} items in a FAISS vector DB "
-          f"(text + table + image, one shared space).")
+          f"(text + tables + images, one shared space).")
 
-    # Three queries, each meant to surface a DIFFERENT content type as #1:
-    search("What does the company report say?", index, items, model)   # -> text
-    search("quarterly revenue growth numbers", index, items, model)    # -> table
-    search("picture of the revenue bar chart", index, items, model)    # -> image
+    queries = args.query or [
+        "What were the total revenues this quarter?",
+        "revenue by geographic area",
+        "a chart or figure in the report",
+    ]
+    for q in queries:
+        search(q, index, items, model, k=args.k)
 
     print("Takeaway: one CLIP-powered vector DB retrieves across text, tables, and")
-    print("images together. The TYPE metadata tells you which kind of content")
-    print(f"matched — and extracted images were saved to {os.path.basename(IMG_DIR)}/.")
+    print("images from ANY PDF. The TYPE + PAGE metadata tells you what matched and")
+    print(f"where. Extracted images were saved to {os.path.basename(IMG_DIR)}/.")
 
 
 if __name__ == "__main__":

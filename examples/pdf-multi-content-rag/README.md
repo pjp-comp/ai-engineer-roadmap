@@ -1,57 +1,74 @@
-# Multimodal RAG — text + tables + images in one vector DB
+# Multimodal RAG over any PDF — text + tables + images
 
 **Big idea:** real documents aren't just text — they have **paragraphs, tables,
-and images/charts**. This example builds one vector database over all three and
-retrieves across them with a single query.
+and images/charts**. This example builds one vector database over all three, from
+**any PDF**, and retrieves across them with a single query.
 
 ## Run
 ```bash
 # from the project root, with the venv active (see top-level README)
+
+# 1) the bundled sample (has text, a table, and a real chart image)
 python examples/pdf-multi-content-rag/example.py
+
+# 2) your own PDF
+python examples/pdf-multi-content-rag/example.py --pdf path/to/your.pdf
+
+# 3) your own PDF + your own questions
+python examples/pdf-multi-content-rag/example.py --pdf your.pdf \
+    -q "what were total revenues?" -q "revenue by region"
 ```
 First run downloads the CLIP model (~600 MB) into the project's `.models/` cache.
 
 ## What it does
-1. **Reads** `sample_document_with_chart.pdf` and pulls out its three content
-   types: the **text** paragraph, the **table** (Quarter / Revenue / Growth),
-   and the embedded **chart image**.
+1. **Extracts** three content types from any PDF:
+   - **text** — each page's prose, split into overlapping chunks.
+   - **tables** — pulled with **pdfplumber** (real table structure), cleaned, and
+     linearized to readable rows.
+   - **images** — extracted from the PDF; banner/rule decoration is filtered out
+     so only real figures remain. Saved to `extracted_images/`.
 2. **Embeds everything with CLIP** — one model that maps *both* text and images
    into the **same** vector space, so a text query can match any content type.
 3. **Builds a FAISS vector DB** storing the vector + the original content + a
-   `type` tag (text / table / image) — the "store 3 things" pattern of a real
-   vector database.
+   `type` (text / table / image) and `page` tag.
 4. **Retrieves** by query and prints nicely-formatted results: the matched
    **type**, the similarity **score**, and the **page**.
 
 ## What you'll see
-Three queries, each designed to surface a different content type as the top hit:
+On the bundled sample, three queries each surface a different content type; on a
+real report the answers naturally live in text and tables. Example on a real
+12-page financial report:
 
-| Query | Top result |
-|---|---|
-| "What does the company report say?" | 📝 **text** |
-| "quarterly revenue growth numbers" | 📊 **table** |
-| "picture of the revenue bar chart" | 🖼️ **image** |
+```
+Extracted: 8 table, 60 text
+Stored 68 items in a FAISS vector DB ...
 
-Extracted images are saved to `extracted_images/` so you can open them.
+🔎 Query: "revenue by geographic area"
+1. 📝 TEXT  (score 0.881, page 6)
+       Revenue by Geographic Area Quarterly ... United States $34,036 ...
+```
 
-## The "latest way" — and an honest caveat
-The modern approach to multimodal RAG is a **shared embedding space** (CLIP) plus
-**type metadata**, so one query retrieves across modalities. But CLIP is trained
-on natural photos and is **weak at charts/diagrams**, and its text↔image scores
-sit on a lower scale than text↔text scores.
-
-The production fix (used here) is **"describe-then-embed"**: store the image
-*and* a short **caption**, then embed both and average them. That's why the chart
-becomes findable by words. In a real system the caption comes from an
-image-captioning / vision model (e.g. a vision LLM); here we use the document's
-own words about the graphic to keep it API-key-free.
+## The "latest way" — and honest caveats
+- **Shared embedding space (CLIP) + type metadata** is the modern multimodal-RAG
+  approach: one query retrieves across modalities.
+- **Images use "describe-then-embed"**: store the picture *and* a short caption,
+  embed both, average them. CLIP alone scores charts too low against text
+  queries; the caption makes them findable. In production the caption comes from
+  a vision/captioning model — here it's derived locally to stay API-key-free.
+- **Not every PDF has figures.** A text-heavy financial report may have only
+  decorative banners (which we filter out), so "find me a chart" correctly
+  returns text/tables — the real answers. The tool adapts to the document.
+- **This is retrieval, not generation.** It returns the relevant pieces; wiring
+  the top results into a real LLM call (with "answer only from this context") is
+  the next step — see [classic PDF RAG](../pdf-rag/) for where that goes.
 
 ## Words to know
-- **Multimodal embedding** — one model, one vector space, for several data types.
+- **Multimodal embedding** — one model, one vector space, several data types.
 - **CLIP** — the model that shares a space for text and images.
-- **Describe-then-embed** — caption an image, then embed the caption too, so text
+- **Describe-then-embed** — caption an image, embed the caption too, so text
   queries can find it.
-- **Type metadata** — the `text` / `table` / `image` tag stored beside each vector.
+- **Type / page metadata** — stored beside each vector so you know what matched
+  and where.
 
 → Related: [image-embeddings demo](../image-embeddings/) ·
 [classic PDF RAG](../pdf-rag/) ·

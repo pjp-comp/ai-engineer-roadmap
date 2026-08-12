@@ -23,6 +23,8 @@ examples/**/*.index
 examples/phase1/vectors_map.svg
 examples/phase1/kitten_vector.txt
 examples/pdf-multi-content-rag/extracted_images/
+# real third-party report kept locally for testing, not redistributed
+examples/pdf-multi-content-rag/Q226+Mgt+Report.pdf
 
 # OS / editor
 .DS_Store
