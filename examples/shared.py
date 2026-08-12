@@ -30,15 +30,19 @@ os.environ.setdefault("HF_HOME", MODEL_CACHE)
 
 from sentence_transformers import SentenceTransformer  # noqa: E402  (after HF_HOME)
 
-# --- The one place the model name is written -------------------------------
-# Small, fast, 384-dimensional. Good default for learning semantic search.
+# --- The one place the model names are written -----------------------------
+# Text-only model: small, fast, 384-dimensional. Good default for semantic search.
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+# Multimodal model: CLIP embeds BOTH text and images into ONE shared space, so a
+# text query and a picture can be compared directly. Used by the multimodal demo.
+CLIP_MODEL_NAME = "sentence-transformers/clip-ViT-B-32"
 
 _model = None
+_clip = None
 
 
 def load_model(name=MODEL_NAME):
-    """Load the embedding model (downloads on first use, then cached).
+    """Load the text embedding model (downloads on first use, then cached).
 
     The loaded model is kept in memory, so calling this twice in one script
     does not reload it.
@@ -48,6 +52,18 @@ def load_model(name=MODEL_NAME):
         print(f"Loading the embedding model ({name})...")
         _model = SentenceTransformer(name)
     return _model
+
+
+def load_clip(name=CLIP_MODEL_NAME):
+    """Load the CLIP multimodal model (text + images in one vector space).
+
+    Cached in memory like load_model(). First call downloads ~600 MB.
+    """
+    global _clip
+    if _clip is None:
+        print(f"Loading the multimodal (CLIP) model ({name})...")
+        _clip = SentenceTransformer(name)
+    return _clip
 
 
 def chunk_text(text, size=200, overlap=40):
