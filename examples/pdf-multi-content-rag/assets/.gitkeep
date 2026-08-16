@@ -1,0 +1,4 @@
+# Drop your files here.
+# Supported: PDFs (.pdf), images (.png .jpg .jpeg .gif .bmp .webp), text (.txt .md).
+# `python example.py` indexes every supported file in this folder into one vector DB.
+# (This .gitkeep just keeps the otherwise-empty folder in git.)
