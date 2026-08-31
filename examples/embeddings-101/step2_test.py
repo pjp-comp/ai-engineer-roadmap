@@ -15,6 +15,10 @@ We verify that three ways:
     C. KNOWN-ANSWER PROBE — ask a question whose answer you KNOW, and check the
        right chunk comes out on top. If it does, retrieval (step 3) will work.
 
+    D. MRR & NDCG — the metrics real teams use. Give a few questions whose correct
+       chunk you know, then measure HOW HIGH the right chunk ranks on average.
+       MRR (Mean Reciprocal Rank) and NDCG@k are the standard retrieval scores.
+
 Run (after step 1):
     python examples/embeddings-101/step2_test.py
 """
@@ -101,6 +105,64 @@ def known_answer_probe(vectors, chunks):
     print(f"   ✓ retrieved the expected (financial) chunk: {hit}\n")
 
 
+# ---- D. MRR & NDCG (the metrics real teams use) ---------------------------
+#
+# To MEASURE retrieval quality you need a labeled set: (question -> the ONE chunk
+# that should answer it). Real teams write these questions by hand. To keep this
+# demo working on ANY document you paste in, we AUTO-BUILD the labels: for a few
+# chunks we take a short slice of the chunk's OWN text as the "question", and the
+# correct answer is that same chunk. (A hand-written paraphrase would be a harder,
+# more realistic test — see the note printed below.)
+#
+# Two standard scores, both 0–1, higher = better:
+#   • MRR  (Mean Reciprocal Rank): per question, score = 1 / (rank of the correct
+#     chunk). Right chunk at #1 -> 1.0, at #2 -> 0.5, at #3 -> 0.33 … averaged.
+#   • NDCG@k: rewards putting the correct chunk near the TOP of the first k hits.
+#     With one correct answer: 1/log2(rank+1), so rank #1 = 1.0, and 0 past k.
+
+
+def build_labels(chunks, n=5):
+    """Auto-build (question, correct_chunk_id) pairs spread across the document."""
+    if len(chunks) <= n:
+        ids = list(range(len(chunks)))
+    else:
+        step = len(chunks) / n
+        ids = sorted({int(i * step) for i in range(n)})
+    labels = []
+    for cid in ids:
+        words = chunks[cid].split()
+        # a middle slice of the chunk, so it's not just the opening boilerplate
+        query = " ".join(words[3:16]) or chunks[cid]
+        labels.append((query, cid))
+    return labels
+
+
+def retrieval_metrics(vectors, chunks, k=5):
+    model = load_model()
+    print("D. RETRIEVAL METRICS (MRR & NDCG) — how high does the right chunk rank?\n")
+
+    labels = build_labels(chunks)
+    rrs, ndcgs = [], []
+    for question, correct in labels:
+        q = model.encode(question, normalize_embeddings=True)
+        order = np.argsort(-(vectors @ q))          # chunk indices, best first
+        rank = int(np.where(order == correct)[0][0]) + 1  # 1-based rank of correct
+
+        rr = 1.0 / rank                              # reciprocal rank
+        ndcg = (1.0 / np.log2(rank + 1)) if rank <= k else 0.0  # NDCG@k (1 relevant)
+        rrs.append(rr)
+        ndcgs.append(ndcg)
+        print(f'   chunk {correct}: found at rank {rank}  (RR {rr:.2f}, NDCG {ndcg:.2f})')
+
+    n = len(labels)
+    print(f"\n   MRR      = {sum(rrs)/n:.3f}   (avg of 1/rank; 1.0 = always #1)")
+    print(f"   NDCG@{k}  = {sum(ndcgs)/n:.3f}   (1.0 = right chunk always at top)")
+    print("   Near 1.0 here just confirms the plumbing works (each query is a slice")
+    print("   of its own chunk). For a REAL test, replace build_labels() with your")
+    print("   own hand-written questions — that's how teams compare models on their")
+    print("   data instead of guessing.\n")
+
+
 def main():
     if not os.path.exists(VEC_PATH):
         raise SystemExit("No vectors found — run step1_generate.py first.")
@@ -108,8 +170,9 @@ def main():
     similarity_matrix(vectors, chunks)
     draw_map(vectors, chunks)
     known_answer_probe(vectors, chunks)
-    print("If the diagonal is ~1.00, related topics cluster on the map, and the")
-    print("probe found the right chunk — your embeddings are good. On to step 3!")
+    retrieval_metrics(vectors, chunks)
+    print("If the diagonal is ~1.00, related topics cluster on the map, the probe")
+    print("found the right chunk, and MRR/NDCG are high — your embeddings are good!")
 
 
 if __name__ == "__main__":
